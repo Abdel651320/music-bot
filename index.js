@@ -1,10 +1,7 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
-const {
-  joinVoiceChannel, createAudioPlayer,
-  createAudioResource, AudioPlayerStatus
-} = require('@discordjs/voice');
-const play = require('play-dl');
+const { DisTube } = require('distube');
+const { YtDlpPlugin } = require('@distube/yt-dlp');
 
 const client = new Client({
   intents: [
@@ -15,7 +12,9 @@ const client = new Client({
   ]
 });
 
-const queue = new Map();
+const distube = new DisTube(client, {
+  plugins: [new YtDlpPlugin({ update: false })]
+});
 
 client.once('clientReady', () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
@@ -26,85 +25,67 @@ client.on('messageCreate', async (message) => {
 
   const args = message.content.slice(1).trim().split(/ +/);
   const cmd  = args.shift().toLowerCase();
+  const voiceChannel = message.member?.voice.channel;
 
   if (cmd === 'play') {
-    const vc = message.member?.voice.channel;
-    if (!vc) return message.reply('❌ Rejoins un salon vocal !');
+    if (!voiceChannel) return message.reply('❌ Rejoins un salon vocal !');
     const query = args.join(' ');
     if (!query) return message.reply('❌ Donne un titre ou une URL !');
-
     try {
-      const results = await play.search(query, { limit: 1 });
-      if (!results.length) return message.reply('❌ Rien trouvé.');
-      const song = { title: results[0].title, url: results[0].url };
-
-      if (!queue.has(message.guild.id))
-        queue.set(message.guild.id, { songs: [], connection: null, player: null });
-
-      const sq = queue.get(message.guild.id);
-      sq.songs.push(song);
-      message.reply(`🎵 Ajouté : **${song.title}**`);
-
-      if (!sq.connection) {
-        sq.connection = joinVoiceChannel({
-          channelId: vc.id,
-          guildId: message.guild.id,
-          adapterCreator: message.guild.voiceAdapterCreator,
-        });
-        playNext(message.guild.id, message.channel);
-      }
-    } catch (e) { console.error(e); message.reply('❌ Erreur.'); }
+      await distube.play(voiceChannel, query, { message, textChannel: message.channel });
+    } catch (e) {
+      console.error(e);
+      message.reply('❌ Erreur : ' + e.message);
+    }
   }
 
   if (cmd === 'skip') {
-    const sq = queue.get(message.guild.id);
-    if (!sq) return message.reply('❌ Rien en cours.');
-    sq.player?.stop();
-    message.reply('⏭️ Suivant !');
+    const queue = distube.getQueue(message.guild.id);
+    if (!queue) return message.reply('❌ Rien en cours.');
+    try { await queue.skip(); message.reply('⏭️ Suivant !'); }
+    catch (e) { message.reply('❌ Pas de musique suivante.'); }
   }
 
   if (cmd === 'stop') {
-    const sq = queue.get(message.guild.id);
-    if (!sq) return message.reply('❌ Rien en cours.');
-    sq.songs = [];
-    sq.player?.stop();
-    sq.connection?.destroy();
-    queue.delete(message.guild.id);
+    const queue = distube.getQueue(message.guild.id);
+    if (!queue) return message.reply('❌ Rien en cours.');
+    await distube.stop(message.guild.id);
     message.reply('⏹️ Arrêté.');
   }
 
   if (cmd === 'queue') {
-    const sq = queue.get(message.guild.id);
-    if (!sq?.songs.length) return message.reply('📭 File vide.');
-    const list = sq.songs.map((s,i) => `${i+1}. ${s.title}`).join('\n');
+    const queue = distube.getQueue(message.guild.id);
+    if (!queue) return message.reply('📭 File vide.');
+    const list = queue.songs.map((s, i) => `${i === 0 ? '▶️' : `${i}.`} ${s.name}`).join('\n');
     message.reply(`🎶 File :\n${list}`);
+  }
+
+  if (cmd === 'pause') {
+    const queue = distube.getQueue(message.guild.id);
+    if (!queue) return message.reply('❌ Rien en cours.');
+    queue.pause();
+    message.reply('⏸️ En pause.');
+  }
+
+  if (cmd === 'resume') {
+    const queue = distube.getQueue(message.guild.id);
+    if (!queue) return message.reply('❌ Rien en cours.');
+    queue.resume();
+    message.reply('▶️ Repris !');
   }
 });
 
-async function playNext(guildId, channel) {
-  const sq = queue.get(guildId);
-  if (!sq?.songs.length) {
-    sq?.connection?.destroy();
-    queue.delete(guildId);
-    return;
-  }
-  const song = sq.songs[0];
-  try {
-    const stream   = await play.stream(song.url, { quality: 2 });
-    const resource = createAudioResource(stream.stream, { inputType: stream.type });
-    const player   = createAudioPlayer();
-    sq.player = player;
-    sq.connection.subscribe(player);
-    player.play(resource);
-    channel.send(`▶️ En cours : **${song.title}**`);
-    player.on(AudioPlayerStatus.Idle, () => { sq.songs.shift(); playNext(guildId, channel); });
-    player.on('error', (e) => { console.error(e); sq.songs.shift(); playNext(guildId, channel); });
-  } catch(e) {
-    console.error(e);
-    channel.send('❌ Erreur de lecture.');
-    sq.songs.shift();
-    playNext(guildId, channel);
-  }
-}
+distube.on('playSong', (queue, song) => {
+  queue.textChannel?.send(`▶️ En cours : **${song.name}** (${song.formattedDuration})`);
+});
+
+distube.on('addSong', (queue, song) => {
+  queue.textChannel?.send(`🎵 Ajouté : **${song.name}**`);
+});
+
+distube.on('error', (channel, error) => {
+  console.error(error);
+  channel?.send('❌ Erreur : ' + error.message);
+});
 
 client.login(process.env.TOKEN);
