@@ -1,18 +1,16 @@
 require('dotenv').config();
-
-const play = require('play-dl');
-(async () => {
-  if (play.is_expired()) {
-    await play.refreshToken();
-  }
-})();
-
 const { Client, GatewayIntentBits } = require('discord.js');
 const {
   joinVoiceChannel, createAudioPlayer,
   createAudioResource, AudioPlayerStatus
 } = require('@discordjs/voice');
 const play = require('play-dl');
+
+(async () => {
+  if (play.is_expired()) {
+    await play.refreshToken();
+  }
+})();
 
 const client = new Client({
   intents: [
@@ -25,7 +23,7 @@ const client = new Client({
 
 const queue = new Map();
 
-client.once('ready', () => {
+client.once('clientReady', () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
 });
 
@@ -97,15 +95,22 @@ async function playNext(guildId, channel) {
     return;
   }
   const song = sq.songs[0];
-  const stream   = await play.stream(song.url, { quality: 2 });
-  const resource = createAudioResource(stream.stream, { inputType: stream.type });
-  const player   = createAudioPlayer();
-  sq.player = player;
-  sq.connection.subscribe(player);
-  player.play(resource);
-  channel.send(`▶️ En cours : **${song.title}**`);
-  player.on(AudioPlayerStatus.Idle, () => { sq.songs.shift(); playNext(guildId, channel); });
-  player.on('error', () => { sq.songs.shift(); playNext(guildId, channel); });
+  try {
+    const stream   = await play.stream(song.url, { quality: 2 });
+    const resource = createAudioResource(stream.stream, { inputType: stream.type });
+    const player   = createAudioPlayer();
+    sq.player = player;
+    sq.connection.subscribe(player);
+    player.play(resource);
+    channel.send(`▶️ En cours : **${song.title}**`);
+    player.on(AudioPlayerStatus.Idle, () => { sq.songs.shift(); playNext(guildId, channel); });
+    player.on('error', (e) => { console.error(e); sq.songs.shift(); playNext(guildId, channel); });
+  } catch(e) {
+    console.error(e);
+    channel.send('❌ Erreur de lecture, passage à la suivante...');
+    sq.songs.shift();
+    playNext(guildId, channel);
+  }
 }
 
 client.login(process.env.TOKEN);
