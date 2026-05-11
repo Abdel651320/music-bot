@@ -1,4 +1,12 @@
 require('dotenv').config();
+
+const play = require('play-dl');
+(async () => {
+  if (play.is_expired()) {
+    await play.refreshToken();
+  }
+})();
+
 const { Client, GatewayIntentBits } = require('discord.js');
 const {
   joinVoiceChannel, createAudioPlayer,
