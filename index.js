@@ -16,8 +16,7 @@ const client = new Client({
 });
 
 const distube = new DisTube(client, {
-  plugins: [new YtDlpPlugin({ update: false })],
-  ffmpegPath: ffmpegPath
+  plugins: [new YtDlpPlugin({ update: false })]
 });
 
 client.once('clientReady', () => {
