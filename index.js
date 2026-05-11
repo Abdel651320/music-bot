@@ -32,7 +32,10 @@ client.on('messageCreate', async (message) => {
     const query = args.join(' ');
     if (!query) return message.reply('❌ Donne un titre ou une URL !');
     try {
-      await distube.play(voiceChannel, query, { message, textChannel: message.channel });
+      await distube.play(voiceChannel, query, {
+        textChannel: message.channel,
+        member: message.member
+      });
     } catch (e) {
       console.error(e);
       message.reply('❌ Erreur : ' + e.message);
@@ -40,35 +43,35 @@ client.on('messageCreate', async (message) => {
   }
 
   if (cmd === 'skip') {
-    const queue = distube.getQueue(message.guild.id);
+    const queue = distube.getQueue(message.guildId);
     if (!queue) return message.reply('❌ Rien en cours.');
     try { await queue.skip(); message.reply('⏭️ Suivant !'); }
     catch (e) { message.reply('❌ Pas de musique suivante.'); }
   }
 
   if (cmd === 'stop') {
-    const queue = distube.getQueue(message.guild.id);
+    const queue = distube.getQueue(message.guildId);
     if (!queue) return message.reply('❌ Rien en cours.');
-    await distube.stop(message.guild.id);
+    await queue.stop();
     message.reply('⏹️ Arrêté.');
   }
 
   if (cmd === 'queue') {
-    const queue = distube.getQueue(message.guild.id);
+    const queue = distube.getQueue(message.guildId);
     if (!queue) return message.reply('📭 File vide.');
     const list = queue.songs.map((s, i) => `${i === 0 ? '▶️' : `${i}.`} ${s.name}`).join('\n');
     message.reply(`🎶 File :\n${list}`);
   }
 
   if (cmd === 'pause') {
-    const queue = distube.getQueue(message.guild.id);
+    const queue = distube.getQueue(message.guildId);
     if (!queue) return message.reply('❌ Rien en cours.');
     queue.pause();
     message.reply('⏸️ En pause.');
   }
 
   if (cmd === 'resume') {
-    const queue = distube.getQueue(message.guild.id);
+    const queue = distube.getQueue(message.guildId);
     if (!queue) return message.reply('❌ Rien en cours.');
     queue.resume();
     message.reply('▶️ Repris !');
@@ -83,9 +86,9 @@ distube.on('addSong', (queue, song) => {
   queue.textChannel?.send(`🎵 Ajouté : **${song.name}**`);
 });
 
-distube.on('error', (channel, error) => {
+distube.on('error', (error, queue) => {
   console.error(error);
-  channel?.send('❌ Erreur : ' + error.message);
+  queue.textChannel?.send('❌ Erreur : ' + error.message);
 });
 
 client.login(process.env.TOKEN);
