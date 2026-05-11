@@ -6,12 +6,6 @@ const {
 } = require('@discordjs/voice');
 const play = require('play-dl');
 
-(async () => {
-  if (play.is_expired()) {
-    await play.refreshToken();
-  }
-})();
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -107,7 +101,7 @@ async function playNext(guildId, channel) {
     player.on('error', (e) => { console.error(e); sq.songs.shift(); playNext(guildId, channel); });
   } catch(e) {
     console.error(e);
-    channel.send('❌ Erreur de lecture, passage à la suivante...');
+    channel.send('❌ Erreur de lecture.');
     sq.songs.shift();
     playNext(guildId, channel);
   }
